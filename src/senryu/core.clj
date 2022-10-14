@@ -1,5 +1,5 @@
 (ns senryu.core
-  "Not very serious haiku")
+  "A not-very-serious haiku generator")
 
 
 ;; Steps
@@ -20,3 +20,17 @@
 ;; Well-structured code, –- I can come back and piece together why certain decisions were made
 ;; Semi-sensical output based on keeping phrases together (if possible) but being thrifty
 ;;   such that words may be skipped if they block the overall syllable count
+
+(def syllable-boundary-match (re-pattern "[^aeuioAEUIO][aeuioAEUIO]"))
+
+
+(defn word->syllable
+  "Return an integer count of a string's English language syllable count."
+  [word]
+  (if (< (count word) 5)
+    1
+    (->> (subs word 1) ; trim off first letter to avoid double-counting
+         (re-seq syllable-boundary-match) ; basic heuristic of syllables in words
+         (count) ; count the syllable boundary matches
+         (inc) ; include the first sound in the word in the count
+         )))
