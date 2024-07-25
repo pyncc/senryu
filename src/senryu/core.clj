@@ -1,8 +1,9 @@
 (ns senryu.core
   "A not-very-serious haiku generator"
+  (:require
+   [clojure.string :as str])
   (:import
-    java.util.Scanner))
-
+   java.util.Scanner))
 
 ;; Steps
 ;; Take in lines (one at a time, in case they are infinite)
@@ -23,37 +24,50 @@
 ;; Semi-sensical output based on keeping phrases together (if possible) but being thrifty
 ;;   such that words may be skipped if they block the overall syllable count
 
-(def syllable-boundary-match (re-pattern "[^aeuioAEUIO][aeuioAEUIO]"))
+(def syllable-boundary-match (re-pattern "[^aeuioyAEUIOY][aeuioyAEUIOY]"))
 
+(def vowel? #{\a \e \u \i \o \y \A \E \U \I \O \Y})
 
 (defn word->syllables
   "Return an integer of an English word's (approximate) syllable count."
   [word]
-  (if (< (count word) 5)
+  (if (< (count word) 6)
     1
-    (->> (subs word 1) ; trim off first letter to avoid double-counting
-         (re-seq syllable-boundary-match) ; basic heuristic of syllables in words
-         (count) ; count the syllable boundary matches
-         (inc) ; include the first sound in the word in the count
-         )))
+    (reduce
+     +
+     0
+     (remove
+      nil?
+      [;; if starts with a vowel, add one
+       (when (vowel? (first word))
+         1)
+       ;; count consonant-vowel boundaries
+       (count (re-seq syllable-boundary-match word))
+       ;; decrease count for ending with e 
+       (when (str/ends-with? word "e")
+         -1)]))
+       ;; count certain vowel pairs, such as ia or ie?
 
+    #_(-> word
+        ;; if starts with a vowel, add one
+          #_(subs 1) ; trim off first letter to avoid double-counting
+          (->> (re-seq syllable-boundary-match)) ; basic heuristic of syllables in words
+          (count) ; count the syllable boundary matches
+          #_(inc)))) ; include the first sound in the word in the count
 
 ;; upon adding new word, review existing word-counts
-
 
 (defn update-state-from-word
   "Update collector with counts, possibly including boundaries of various
   syllable aggregations."
   [collector word]
-  (let [syllables (word->syllables word)]
+  (let [syllables (word->syllables word)]))
        ;; (swap! collector update :counts conj (word->syllables word))
        ;; tracking: syllable collections of 5 and 7
        ;; determine overlapping syllable sequences as index or range coordinates
        ;; {:fives #{[0 1 2 3]}
        ;;  :sevens #{[1 2 3 4 5]}}
        ;; to give the best chance of finding a solution
-       ))
-
 
 ;; interesting to think about:
 ;; ? can this, would this ever emit more than one stanza at a time?
@@ -62,13 +76,11 @@
 ;;   if possible
 (defn emit-stanza
   "Scan words, boundaries and emit stanza(s?)"
-  [collector]
+  [collector])
   ;; find non-overlapping sequences from syllable counts
   ;; and try to put stanzas together
   ;; once we have two 5s and one 7, emit the stanza
   ;; and clear these from the tracking state
-  )
-
 
 (defn process
   [input]
