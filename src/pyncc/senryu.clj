@@ -63,7 +63,6 @@
          words (rest word-syllables)
          syllable (first syllable-groups)
          syllables (rest syllable-groups)]
-    #_(println "loop" acc group word words syllable syllables)
     (if (and syllable word)
       ;; does placing curr word into curr-group "fit" based on syllable count?
       ;; does curr-group's sum exactly match curr-syllable?
@@ -148,11 +147,8 @@
       (fn grouping-xform
         ([] (rf))
         ([result]
-         ;; need to "flush" temp to result here?
-         (println "grouping, result" result)
          (rf result))
         ([result input]
-         (println "grouping, result intermediate" result input)
          (let [curr (swap! temp conj input)]
            (when-let [[stanza extra-words] (find-stanza syllable-grouping curr)]
              (reset! temp extra-words)
@@ -185,23 +181,18 @@
             words))
 
 (comment
+  (->> ["a" "penniless" "fool"]
+       (calculate [1 3 1])
+       (first)
+       (render-match)
+       (println))
+
   (require '[pyncc.data :as data])
   (calculate [5 7 5] data/example)
   (calculate [5 7 5] data/words)
-  (calculate [1 3 1] ["a" "penniless" "fool"])
+
   (map (juxt identity word->syllables) data/example)
   (map (juxt identity word->syllables) data/words)
   (find-stanza [2 1 1] [["haikus" 2] ["are" 1] ["hard" 1] ["refrigerator" 5]])
   (calculate [2 1 1] ["haikus" "are" "hard" "refrigerator"])
   (println (render-match [[["a" 1] ["b" 1] ["c" 1]] [["Z" 10]]])))
-
-(defn process
-  [input]
-  (->> input
-       (Scanner.)
-       (iterator-seq)
-       (calculate [5 7 5])
-       (map render-match)))
-
-(comment
-  (process "resources/example.txt"))
