@@ -1,6 +1,6 @@
-(ns senryu.data
+(ns pyncc.data
   (:require
-   [core :as core]
+   [pyncc.senryu :as senryu]
    [clojure.string :as str]))
 
 (def words
@@ -221,12 +221,21 @@
              word-groups))))
 
 (def calculate-syllables
-  (map (juxt identity core/word->syllables)))
+  (map (juxt identity senryu/word->syllables)))
 
 (defn calculate
+  "Returns a Reducible of stanza groupings, given a lazy sequence of words and
+  a grouping of syllable counts.
+
+  (calculate [1 3 1] (\"a\" \"penniless\" \"fool\"))"
   [syllable-grouping words]
   (eduction calculate-syllables
             (exclude-syllables syllable-grouping)
             (grouping syllable-grouping)
             (map render-match)
             words))
+
+(comment
+  (calculate [5 7 5] example)
+  (map (juxt identity senryu/word->syllables) example)
+  (println (render-match [[["a" 1] ["b" 1] ["c" 1]] [["Z" 10]]])))
