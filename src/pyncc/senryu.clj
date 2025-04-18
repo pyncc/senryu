@@ -1,113 +1,84 @@
 (ns pyncc.senryu
-  "A not-very-serious haiku generator"
+  "A not-very-serious haiku generator. Technically these are senryu since they
+  are non-traditional limmerick styles."
   (:require
-   [clojure.string :as str])
-  (:import
-   java.util.Scanner))
-
-;; Steps
-;; Take in lines (one at a time, in case they are infinite)
-;; Take in words from this line, one at a time
-;; categorize these words by syllables
-;; exclude words with very large syllable counts
-;; retain phrases, that is do not randomly collect them, keep track of relative ordering.
-
-;; Do a kind of scanning that retains various (possibly overlapping)
-;;   boundaries of syllable collections
-;;   such that 'every so often' a process can go scan to
-;;   find non-overlapping sequences of 5-7-5 syllable counts
+   [pyncc.syllable :as syllable]
+   [clojure.string :as str]))
 
 ;; Goals:
 ;; Efficient such that its possible to consume and emit infinite sequences
 ;; Delightful, delicious
-;; Well-structured code, –- I can come back and piece together why certain decisions were made
-;; Semi-sensical output based on keeping phrases together (if possible) but being thrifty
-;;   such that words may be skipped if they block the overall syllable count
-
-(def syllable-boundary-match (re-pattern "[^aeuioyAEUIOY][aeuioyAEUIOY]"))
-
-(def vowel? #{\a \e \u \i \o \y \A \E \U \I \O \Y})
-
-(defn word->syllables
-  "Return an integer of an English word's (approximate) syllable count."
-  [word]
-  (if (< (count word) 6)
-    1
-    (reduce
-     +
-     0
-     (remove
-      nil?
-      [;; if starts with a vowel, add one
-       (when (vowel? (first word))
-         1)
-       ;; count consonant-vowel boundaries
-       (count (re-seq syllable-boundary-match word))
-       ;; decrease count for ending with e
-       (when (str/ends-with? word "e")
-         -1)]))
-       ;; count certain vowel pairs, such as ia or ie?
-
-    #_(-> word
-        ;; if starts with a vowel, add one
-          #_(subs 1) ; trim off first letter to avoid double-counting
-          (->> (re-seq syllable-boundary-match)) ; basic heuristic of syllables in words
-          (count) ; count the syllable boundary matches
-          #_(inc)))) ; include the first sound in the word in the count
+;; Well-structured code, – I can come back and piece together why
+;; certain decisions were made and make changes easily
 
 (defn naive-grouping
+  "A _naive_ approach at grouping words based on syllable counts. Returns nil if no stanza is found.
+
+  Syllable-groups is a vector of syllables to group by.
+  Word-syllables is a vector of (word, syllable) tuples.
+
+  Returns a tuple of (stanza, extra-words),
+  where stanza is a vector of word vectors based on the index of syllable-groups
+    and each syllable in syllable-groups is evaluated in order
+    and extra-words is a collection of unused (word, syllable) tuples
+
+  Example:
+    syllable-groups [3 4 2]
+    word-syllables [[\"words\" 1] [\"are\" 1] [\"ok\" 1] [\"refrigerator\" 5]
+                    [\"but\" 1] [\"pictures\" 2]  [\"speak\" 1] [\"volumes\" 2]]]
+  {:stanza [[\"words\" \"are\" \"ok\"] [\"but\" \"pictures\" \"speak\"] [\"volumes\"]]
+   :extra-words [[\"refrigerator\" 5]]}
+
+  This implementation will attempt to:
+    * retain phrases
+    * exclude a word if it doesn't fit into the current syllable-count being evaluated"
   [syllable-groups word-syllables]
-  (loop [acc []
-         group []
-         word (first word-syllables)
-         words (rest word-syllables)
+  (loop [stanza []
+         syll-group []
+         word-syll (first word-syllables)
+         word-sylls (rest word-syllables)
          syllable (first syllable-groups)
          syllables (rest syllable-groups)]
-    (if (and syllable word)
-      ;; does placing curr word into curr-group "fit" based on syllable count?
-      ;; does curr-group's sum exactly match curr-syllable?
-      (let [group-total (reduce + (map second group))]
+    (if (and syllable word-syll)
+      (let [group-total (reduce + (map second syll-group))
+            [word word-syllable] word-syll]
         (cond
           ;; current word fits
-          (< (+ group-total (second word)) syllable)
-          (recur acc
-                 (conj group word)
-                 (first words)
-                 (rest words)
+          (< (+ group-total word-syllable) syllable)
+          (recur stanza
+                 (conj syll-group word-syll)
+                 (first word-sylls)
+                 (rest word-sylls)
                  syllable
                  syllables)
 
           ;; current word meets needs
-          (= syllable (+ group-total (second word)))
-          (recur (conj acc (conj group word))
+          (= syllable (+ group-total word-syllable))
+          (recur (conj stanza (conj (mapv first syll-group) word))
                  []
-                 (first words)
-                 (rest words)
+                 (first word-sylls)
+                 (rest word-sylls)
                  (first syllables)
                  (rest syllables))
 
           ;; this word doesn't fit, ignore it and keep trying until you run out
           ;; of words or syllables
-          ;; could consider adding it to a discard bin and returning with
-          ;; 'remaining words' vector
 
           :else
-          (recur acc
-                 group
-                 (first words)
-                 (rest words)
+          (recur stanza
+                 syll-group
+                 (first word-sylls)
+                 (rest word-sylls)
                  syllable
                  syllables)))
-      ;; this being recusive allows some interesting explorations based on
-      ;; subsequences or recombinations
 
-      ;; done, no more usable inputs, but is it correct/sufficient?
+      ;; no more usable inputs, but is it correct/sufficient?
       ;; if not, return nothing
-      (when (= (count acc) (count syllable-groups))
-        [acc
-         (if word
-           (conj words word)
-           words)]))))
+      (when (= (count stanza) (count syllable-groups))
+        {:stanza stanza
+         :extra-words (if word-syll
+                        (conj word-sylls word-syll)
+                        word-sylls)}))))
 
 (defn find-stanza
   "Given a set of words, find sequences of exactly the given syllable counts, returning
@@ -119,8 +90,8 @@
                 [\"hard\" 1]
                 [\"refrigerator\" 5]])
 
-  => [[[\"haikus\"] [\"are\"] [\"hard\"]]
-      [\"refrigerator\" 5]]"
+  => {:stanza [[\"haikus\"] [\"are\"] [\"hard\"]]
+      :extra-words [[\"refrigerator\" 5]]}"
   [syllables word-syllables]
   ;; various bucket filling/box packing algorithms go here
   (or
@@ -129,12 +100,12 @@
 
    ;; retry the whole thing with different orderings of syllables,
    (comment
-     (let [[stanza remaining-words] (naive-grouping (sort syllables) word-syllables)]
-       ;; reorder the stanza by original syllable ordering
-       :return))))
+     (let [{:keys [stanza remaining-words]} (naive-grouping (sort syllables) word-syllables)]
+       stanza))))
 
 (defn- exclude-syllables
-  "Remove words with syllables that exceed the desired grouping's max"
+  "A transducer function to remove (words, syllable) tuples for syllables that
+  exceed the desired grouping's max"
   [syllables]
   (remove (fn [[_ syllable]] (< (apply max syllables) syllable))))
 
@@ -146,11 +117,11 @@
       [rf]
       (fn grouping-xform
         ([] (rf))
-        ([result]
-         (rf result))
+        ([result] (rf result))
         ([result input]
          (let [curr (swap! temp conj input)]
-           (when-let [[stanza extra-words] (find-stanza syllable-grouping curr)]
+           (when-let [{:keys [stanza extra-words]}
+                      (find-stanza syllable-grouping curr)]
              (reset! temp extra-words)
              (rf result stanza))))))))
 
@@ -161,15 +132,15 @@
   (str "...\n"
        (str/join
         "\n"
-        (map #(apply str (cons "> " (str/join " " (map first %))))
+        (map #(apply str (cons "> " (str/join " " %)))
              word-groups))))
 
 (def calculate-syllables
   "Return tuples of [word syllable-count-of-that-word]"
-  (map (juxt identity word->syllables)))
+  (map (juxt identity syllable/word->syllables)))
 
 (defn calculate
-  "Returns a Reducible of stanza groupings, given a lazy sequence of words and
+  "Returns a Reducible of stanza groupings, given a sequence of words and
   a grouping of syllable counts.
 
   (calculate [1 3 1] (\"a\" \"penniless\" \"fool\"))"
@@ -187,12 +158,6 @@
        (render-match)
        (println))
 
-  (require '[pyncc.data :as data])
-  (calculate [5 7 5] data/example)
-  (calculate [5 7 5] data/words)
-
-  (map (juxt identity word->syllables) data/example)
-  (map (juxt identity word->syllables) data/words)
   (find-stanza [2 1 1] [["haikus" 2] ["are" 1] ["hard" 1] ["refrigerator" 5]])
-  (calculate [2 1 1] ["haikus" "are" "hard" "refrigerator"])
-  (println (render-match [[["a" 1] ["b" 1] ["c" 1]] [["Z" 10]]])))
+  (calculate [2 2] ["haikus" "are" "hard" "refrigerator"])
+  (println (render-match [[["a" 2] ["b" 1] ["c" 1]] [["Z" 10]]])))
